@@ -395,72 +395,6 @@ function msUpdateGesture() {
 // ORIGINAL WORKING LUMINOUS TRAILS
 // =====================================================
 
-function msBrushPalette(direction) {
-  // Upward = warm summer colors. Downward = aqua/ocean colors.
-  return direction === "down"
-    ? [
-        [20, 245, 220],  // bright aqua
-        [0, 205, 205],   // turquoise
-        [35, 165, 235],  // aqua blue
-        [80, 125, 255]   // cool blue
-      ]
-    : [
-        [255, 92, 150],  // summer coral pink
-        [255, 135,  90], // warm pink-orange
-        [255, 185,  70], // sunny orange
-        [255, 225, 125]  // soft summer yellow
-      ];
-}
-
-function msBlendBrushPalette(palette, t) {
-  const scaled = msClamp(t, 0, 1) * (palette.length - 1);
-  const index = Math.min(
-    Math.floor(scaled),
-    palette.length - 2
-  );
-  const amount = scaled - index;
-
-  return palette[index].map((value, channel) =>
-    value + (palette[index + 1][channel] - value) * amount
-  );
-}
-
-function msDrawBrushSegment(a, b, rgb, fade, width) {
-  const ctx = drawingContext;
-  const color = `rgba(${Math.round(rgb[0])}, ${Math.round(rgb[1])}, ${Math.round(rgb[2])},`;
-
-  // Large soft atmospheric halo.
-  ctx.save();
-  ctx.shadowColor = `${color}${Math.max(0.18, fade * 0.32)})`;
-  ctx.shadowBlur = width * 3.8;
-  stroke(rgb[0], rgb[1], rgb[2], fade * 48);
-  strokeWeight(width * 3.1);
-  strokeCap(ROUND);
-  line(a.x, a.y, b.x, b.y);
-  ctx.restore();
-
-  // Colored luminous body.
-  ctx.save();
-  ctx.shadowColor = `${color}${Math.max(0.25, fade * 0.55)})`;
-  ctx.shadowBlur = width * 1.8;
-  stroke(rgb[0], rgb[1], rgb[2], fade * 145);
-  strokeWeight(width * 1.45);
-  strokeCap(ROUND);
-  line(a.x, a.y, b.x, b.y);
-  ctx.restore();
-
-  // Bright, colored brush center. It is not a flat white line.
-  stroke(
-    Math.min(255, rgb[0] + 48),
-    Math.min(255, rgb[1] + 48),
-    Math.min(255, rgb[2] + 48),
-    fade * 205
-  );
-  strokeWeight(Math.max(2.2, width * 0.42));
-  strokeCap(ROUND);
-  line(a.x, a.y, b.x, b.y);
-}
-
 function msDrawTrails() {
 
   const now = millis();
@@ -477,15 +411,22 @@ function msDrawTrails() {
   let modes = [];
 
   if (detected.length >= 2) {
-    positions = detected.slice(0, 2).map(h => h.fingertip);
+
+    positions = detected.slice(0, 2)
+      .map(h => h.fingertip);
+
     modes = ["FINGERTIP", "FINGERTIP"];
+
   } else if (
     detected.length === 1 &&
     detected[0].fist >= 0.63
   ) {
+
     positions = [detected[0].palm];
     modes = ["PALM"];
+
   } else if (detected.length === 1) {
+
     positions = [detected[0].fingertip];
     modes = ["FINGERTIP"];
   }
@@ -502,19 +443,33 @@ function msDrawTrails() {
     }
 
     if (p) {
+
       const old = msTrailPositions[i];
+
       const jump = old
         ? Math.hypot(p.x - old.x, p.y - old.y)
         : 0;
 
-      if (!old || jump < Math.max(width, height) * 0.22) {
+      if (
+        !old ||
+        jump < Math.max(width, height) * 0.22
+      ) {
+
         const down = old && p.y - old.y > 1.5;
+
+        const cool =
+          msMode === "VALLEY" ||
+          (
+            msMode === "LOCAL PULL" &&
+            msTargets.some(v => v < 85)
+          ) ||
+          down;
 
         msTrails[i].push({
           x: p.x,
           y: p.y,
           time: now,
-          direction: down ? "down" : "up"
+          cool: !!cool
         });
 
         msTrailPositions[i] = p;
@@ -528,40 +483,54 @@ function msDrawTrails() {
     const trail = msTrails[i];
 
     for (let j = 1; j < trail.length; j++) {
+
       const a = trail[j - 1];
       const b = trail[j];
-      const life = msClamp(
+
+      const fade = msClamp(
         1 - (now - b.time) / 900,
         0,
         1
       );
-      const along = j / Math.max(1, trail.length - 1);
-      const fade = life * (0.25 + 0.75 * along);
-      const palette = msBrushPalette(b.direction);
-      const rgb = msBlendBrushPalette(palette, along);
-      const distance = Math.hypot(b.x - a.x, b.y - a.y);
-      const width = msClamp(
-        5 + distance * 0.42 + 17 * fade,
-        5,
-        29
-      );
 
-      msDrawBrushSegment(a, b, rgb, fade, width);
+      const palette = b.cool
+        ? [
+            [69, 107, 255],
+            [0, 169, 255],
+            [56, 228, 245],
+            [140, 255, 226]
+          ]
+        : [
+            [255, 55, 95],
+            [255, 102, 184],
+            [255, 153, 77],
+            [255, 230, 109]
+          ];
+
+      const rgb = palette[
+        Math.floor(j / 5) % 4
+      ];
+
+      // OUTER GLOW
+      stroke(rgb[0], rgb[1], rgb[2], fade * 40);
+      strokeWeight(24);
+      line(a.x, a.y, b.x, b.y);
+
+      // COLOURED TRAIL
+      stroke(rgb[0], rgb[1], rgb[2], fade * 110);
+      strokeWeight(9);
+      line(a.x, a.y, b.x, b.y);
+
+      // BRIGHT CENTRE
+      stroke(255, 245, 240, fade * 220);
+      strokeWeight(2);
+      line(a.x, a.y, b.x, b.y);
     }
 
-    // A small glowing tip gives the brush its energetic leading edge.
-    if (p && trail.length) {
-      const newest = trail[trail.length - 1];
-      const palette = msBrushPalette(newest.direction);
-      const rgb = palette[0];
-
-      drawingContext.save();
-      drawingContext.shadowColor = `rgba(${rgb[0]}, ${rgb[1]}, ${rgb[2]}, 0.8)`;
-      drawingContext.shadowBlur = 22;
+    if (p) {
       noStroke();
-      fill(rgb[0], rgb[1], rgb[2], 115);
-      circle(p.x, p.y, 13);
-      drawingContext.restore();
+      fill(255, 255, 255, 160);
+      circle(p.x, p.y, 9);
     }
   }
 }
